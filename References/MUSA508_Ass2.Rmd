@@ -1,0 +1,265 @@
+---
+title: "MUSA508_Ass2"
+author: "Caesar"
+date: "2023-09-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load package, warning = FALSE, message = FALSE} 
+library(tidycensus)
+library(tidyverse)
+library(ggplot2)
+library(sf)
+library(kableExtra)
+
+options(scipen=999)
+options(tigris_class = "sf")
+
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+
+palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
+```
+
+## Load census data dictionaries
+
+
+```{r load_variables, cache = TRUE}
+
+acs_variable_list.2019 <- load_variables(2019, #year
+                                         "acs5", #five year ACS estimates
+                                         cache = TRUE)
+
+acs_variable_list.2009 <- load_variables(2009, #year
+                                         "acs5", #five year ACS estimates
+                                         cache = TRUE)
+```
+
+### Use `get_acs()` to get 2019 ACS data
+
+Notice this returns "long" data - let's examine it
+
+```{r results='hide'}
+tracts19 <-  
+  get_acs(geography = "tract",
+          variables = c("B25026_001E","B02001_002E",
+                        "B15001_050E","B15001_009E",
+                        "B19013_001E", "B25058_001E",
+                        "B06012_002E"), 
+          year=2019, state=11,
+          geometry=TRUE) %>% 
+  st_transform('ESRI:102728')
+```
+
+```{r}
+glimpse(tracts19)
+```
+
+We create a new data frame consisting only of population
+
+```{r}
+
+totalPop19 <-
+  tracts19 %>%
+  filter(variable == "B25026_001")
+```
+
+Ways to examine the data
+
+```{r}
+nrow(totalPop19)
+
+names(totalPop19)
+
+head(totalPop19)
+
+glimpse(totalPop19)
+```
+
+```{r}
+A <- 
+  ggplot() +
+  geom_sf(data = totalPop19, aes(fill = estimate)) +
+  theme(
+    plot.title = element_text(size=22)
+    )
+
+B <- 
+  ggplot() +
+  geom_sf(data = totalPop19, aes(fill = q5(estimate))) +
+  theme(plot.title = element_text(size=22)) 
+
+C <-
+  ggplot() +
+  geom_sf(data = totalPop19, aes(fill = q5(estimate))) +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(totalPop19, "estimate"),
+                    name = "Total\nPopluation\n(Quintile Breaks)") +
+  theme(plot.title = element_text(size=22))
+
+D <- 
+  ggplot() +
+  geom_sf(data = totalPop19, aes(fill = q5(estimate))) +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(totalPop19, "estimate"),
+                    name = "Popluation\n(Quintile Breaks)") +
+  labs(title = "Total Population", subtitle = "Washington DC; 2019") +
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+```
+
+```{r}
+# Let's "spread" the data into wide form
+
+tracts19 <- 
+  tracts19 %>%
+  dplyr::select( -NAME, -moe) %>%
+  spread(key = variable, value = estimate) %>%
+  rename(TotalPop = B25026_001, 
+         Whites = B02001_002,
+         FemaleBachelors = B15001_050, 
+         MaleBachelors = B15001_009,
+         MedHHInc = B19013_001, 
+         MedRent = B25058_001,
+         TotalPoverty = B06012_002)
+
+
+# Let's create new rate variables using mutate
+
+tracts19 <- 
+  tracts19 %>%
+  mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop, 0),
+         pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop), 0),
+         pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
+         year = "2019") %>%
+  dplyr::select(-Whites,-FemaleBachelors,-MaleBachelors,-TotalPoverty)
+```
+
+```{r results='hide'}
+tracts09 <- 
+  get_acs(geography = "tract", 
+          variables = c("B25026_001E","B02001_002E",
+                        "B15001_050E","B15001_009E",
+                        "B19013_001E","B25058_001E",
+                        "B06012_002E"), 
+          year=2009, state=11, 
+          geometry=TRUE, output="wide") %>%
+  st_transform('ESRI:102728') %>%
+  rename(TotalPop = B25026_001E, 
+         Whites = B02001_002E,
+         FemaleBachelors = B15001_050E, 
+         MaleBachelors = B15001_009E,
+         MedHHInc = B19013_001E, 
+         MedRent = B25058_001E,
+         TotalPoverty = B06012_002E) %>%
+  dplyr::select(-NAME, -starts_with("B")) %>%
+  mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
+         pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
+         pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
+         year = "2009") %>%
+  dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty) 
+```
+
+```{r}
+allTracts <- rbind(tracts19,tracts09)
+```
+
+```{r }
+dc_station <- st_read("https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/52/query?where=1%3D1&outFields=*&outSR=4326&f=json") %>%
+  dplyr::select(NAME,LINE) %>%
+  st_transform('ESRI:102728')  
+
+dc_line <- st_read('https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/106/query?outFields=*&where=1%3D1&f=geojson') %>%
+  dplyr::select(NAME,GIS_ID)%>%
+  st_transform('ESRI:102728')
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = st_union(tracts19)) +
+  geom_sf(data = dc_station,
+          aes(color = LINE),
+          show.legend = 'Point',size=2) +
+  geom_sf(data = dc_line,
+          aes(color = GIS_ID),
+          show.legend = 'Line',size=1)
+  labs(title = 'Station stops',
+       subtitle = 'Washington DC',
+       caption = 'Figure 2.2')
+```
+
+```{r }
+station_buffer<- rbind(
+  st_buffer(dc_station,2640) %>%
+    mutate(Legend = 'buffer')%>%
+    dplyr::select(Legend),
+  st_union(st_buffer(dc_station,2640))%>%
+    st_sf()%>%
+    mutate(Legend = 'Unioned Buffer')
+)
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = station_buffer) +
+  geom_sf(data = dc_station,
+          show.legend = 'Point',size = 2) +
+  facet_wrap(~Legend) + 
+  labs(caption = 'Figure 2.3')+
+  mapTheme()
+```
+
+```{r}
+buffer <- filter(station_buffer, Legend=='Unioned Buffer')
+```
+
+```{r}
+clip <- st_intersection(buffer,tracts19) %>%
+  dplyr::select(TotalPop)%>%
+  mutate(inter_type = 'Clip')
+```
+
+```{r}
+selection <- tracts19[buffer,]%>%
+  select(TotalPop)%>%
+  mutate(inter_type = 'Spatial Selection')
+```
+
+```{r}
+select_centroid <- st_centroid(tracts19)[buffer,] %>%
+  st_drop_geometry() %>%
+  left_join(., dplyr::select(tracts19, GEOID), by = "GEOID") %>%
+  st_sf() %>%
+  dplyr::select(TotalPop) %>%
+  mutate(inter_type = "Centroids")
+```
+
+```{r}
+intersections <- rbind(clip, selection, select_centroid)
+
+ggplot() +
+  geom_sf(data=intersections, aes(fill = TotalPop)) +
+  geom_sf(data=dc_station, show.legend = "point") +
+  scale_fill_viridis_c() +
+  facet_wrap(~inter_type) + 
+  mapTheme()
+```
+
+```{r}
+allTracts.group <- 
+  rbind(
+    st_centroid(allTracts)[buffer,] %>%
+      st_drop_geometry() %>%
+      left_join(allTracts) %>%
+      st_sf() %>%
+      mutate(TOD = "TOD"),
+    st_centroid(allTracts)[buffer, op = st_disjoint] %>%
+      st_drop_geometry() %>%
+      left_join(allTracts) %>%
+      st_sf() %>%
+      mutate(TOD = "Non-TOD")) %>%
+  mutate(MedRent.inf = ifelse(year == "2009", MedRent * 1.19, MedRent)) 
+```
