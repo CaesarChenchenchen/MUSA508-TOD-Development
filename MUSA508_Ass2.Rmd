@@ -177,33 +177,31 @@ crime09 <- st_read("https://maps2.dcgis.dc.gov/dcgis/rest/services/FEEDS/MPD/Map
   st_transform('ESRI:102728') 
   
 ```
-```{r crimewithin}
-crime_counts_by_tract <- allTracts %>%
+```{r crime_data_09_19}
+crime_counts_by_tract_19 <- allTracts %>%
   st_intersection(crime19) %>%
   group_by(GEOID) %>%
   summarise(crime_counts=n()) %>%
   st_drop_geometry() %>%
   mutate(year="2019")
 
-allTracts <- left_join(allTracts,crime_counts_by_tract,by=c("GEOID"="GEOID", "year"="year"))
 
-```
-```{r crimewithin}
-crime_counts_by_tract <- allTracts %>%
+crime_counts_by_tract_09 <- allTracts %>%
   st_intersection(crime09) %>%
   group_by(GEOID) %>%
   summarise(crime_counts=n()) %>%
   st_drop_geometry() %>%
   mutate(year="2009")
 
-allTracts <- left_join(allTracts,crime_counts_by_tract,by=c("GEOID"="GEOID", "year"="year"))
+```
+```{r add_crimedata}
+crime_counts_all <- rbind(crime_counts_by_tract_09, crime_counts_by_tract_19)
+
+allTracts <- left_join(allTracts, crime_counts_all, by=c("GEOID"="GEOID", "year"="year"))
 
 ```
 
-```
-
-
-```{r }
+```{r}
 dc_station <- st_read("https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/52/query?where=1%3D1&outFields=*&outSR=4326&f=json") %>%
   dplyr::select(NAME,LINE) %>%
   st_transform('ESRI:102728')  
