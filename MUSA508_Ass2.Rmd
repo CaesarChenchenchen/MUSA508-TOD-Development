@@ -1,7 +1,7 @@
 ---
-title: "MUSA508_Ass2"
-author: "Caesar"
-date: "2023-09-10"
+title: "Transit Oriented Development in Washington DC"
+author: "Ling Chenr"
+date: "2023-09-16"
 output: html_document
 ---
 
@@ -228,14 +228,14 @@ dc_line <- st_read('https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Tr
 ggplot() +
   geom_sf(data = st_union(tracts19)) +
   geom_sf(data = dc_station,
-          aes(color = LINE),
-          show.legend = 'Point',size=2) +
+          show.legend = 'Point',size=1.5) +
   geom_sf(data = dc_line,
-          aes(color = GIS_ID),
-          show.legend = 'Line',size=1)
-  labs(title = 'Station stops',
+          aes(color = NAME),
+          show.legend = 'Line',size=2)+
+  labs(title = 'Station Stops',
        subtitle = 'Washington DC',
-       caption = 'Figure 2.2')
+       caption = 'Figure 2.2')+
+  scale_color_manual(values = c("blue","green","orange","red","#C0C0C0","yellow"),name="Metro Line")
 ```
 
 ```{r }
@@ -342,7 +342,7 @@ ggplot(allTracts.group)+
   geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
   scale_fill_manual(values = palette5,
                     labels= qBr(allTracts.group, "TotalPop"),
-                    name = "Population")+
+                    name = "Population\n(Quintile Breaks)")+
     labs(title = "Total Population by census tracts, 2009-2019",
          subtitle = "Washington DC",
        caption = "Data from US Census Bureau")+
@@ -359,7 +359,7 @@ ggplot(allTracts.group)+
   geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
   scale_fill_manual(values = palette5,
                     labels= qBr(allTracts.group, "MedHHInc.inf"),
-                    name = "Median Household Income\n(Inflation adjusted to 2019)")+
+                    name = "Median Household Income($)\n(Quintile Breaks)\n(Inflation adjusted to 2019)")+
     labs(title = "Median Household Income by census tracts, 2009-2019",
          subtitle = "Washington DC",
        caption = "Data from US Census Bureau")+
@@ -377,7 +377,7 @@ ggplot(allTracts.group)+
   geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
   scale_fill_manual(values = palette5,
                     labels= newqBr(allTracts.group, "pctBachelors"),
-                    name = "Percentage of Bachelors")+
+                    name = "Percentage of Bachelors\n(Quintile Breaks)")+
     labs(title = "Percentage of Bachelors by census tracts, 2009-2019",
          subtitle = "Washington DC",
        caption = "Data from US Census Bureau")+
@@ -393,7 +393,7 @@ ggplot(allTracts.group)+
   geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
   scale_fill_manual(values = palette5,
                     labels= newqBr(allTracts.group, "MedRent.inf"),
-                    name = "Median Rent\n(Inflation adjusted to 2019)")+
+                    name = "Median Rent($)\n(Quintile Breaks)\n(Inflation adjusted to 2019)")+
     labs(title = "Median Rent by census tracts, 2009-2019",
          subtitle = "Washington DC",
        caption = "Data from US Census Bureau")+
@@ -410,7 +410,7 @@ ggplot(allTracts.group)+
   geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
   scale_fill_manual(values = palette5,
                     labels= newqBr(allTracts.group, "crime_counts"),
-                    name = "Crime Counts")+
+                    name = "Crime Counts\n(Quintile Breaks)")+
     labs(title = "Crime Counts by census tracts, 2009-2019",
          subtitle = "Washington DC",
        caption = "Data from US Census Bureau")+
@@ -422,6 +422,15 @@ ggplot(allTracts.group)+
 ### TOD Indicator Tables
 
 ```{r}
+allTracts.Summary <- 
+  st_drop_geometry(allTracts.group) %>%
+  group_by(year, TOD) %>%
+  summarize(Rent = mean(MedRent, na.rm = T),
+            Population = mean(TotalPop, na.rm = T),
+            Percent_White = mean(pctWhite, na.rm = T),
+            Percent_Bach = mean(pctBachelors, na.rm = T),
+            Percent_Poverty = mean(pctPoverty, na.rm = T))
+
 allTracts.Summary %>%
   unite(year.TOD, year, TOD, sep = ": ", remove = T) %>%
   gather(Variable, Value, -year.TOD) %>%
@@ -430,9 +439,8 @@ allTracts.Summary %>%
   kable() %>%
   kable_styling() %>%
   footnote(general_title = "\n",
-           general = "Table 2.3")
+           general = "Table 2.2")
 ```
-
 
 ### TOD Indicator Plots
 
@@ -461,7 +469,7 @@ centroid_all <- st_centroid(allTracts.group, of_largest_polygon = TRUE)
 ```{r }
 # population
 ggplot() +
-  geom_sf(data = allTracts.group,fill='grey40') + 
+  geom_sf(data = allTracts.group,fill='grey60') + 
   geom_sf(data = centroid_all%>%filter(TOD == 'TOD'),
           pch = 21,
           aes(size=TotalPop),
@@ -475,7 +483,7 @@ ggplot() +
 ```{r}
 # rent
 ggplot() +
-  geom_sf(data = allTracts.group,fill='grey40') + 
+  geom_sf(data = allTracts.group,fill='grey60') + 
   geom_sf(data = centroid_all%>%filter(TOD == 'TOD'),
           pch = 21,
           aes(size=MedRent),
@@ -486,7 +494,7 @@ ggplot() +
   scale_size(range = c(1,4))
 ```
 
-```{r}
+```{r create half mile buffers}
 station_ring <- multipleRingBuffer(st_union(dc_station), 2640*9, 2640)
 
 allTracts.rings <-
@@ -498,17 +506,26 @@ allTracts.rings <-
   st_sf() %>%
   mutate(distance = distance / 5280)
 ```
-```{r}
+
+```{r visualize half mile buffers}
 ggplot() +
-    geom_sf(data=station_ring) +
-    geom_sf(data=station_ring, size=1) +
-    geom_sf(data=st_union(allTracts.rings), fill=NA, size=1.2) +
-    labs(title="Half mile buffers") +
+    geom_sf(data=station_ring,aes(color=distance)) +
+  scale_color_gradient()+
+    geom_sf(data=dc_station, size=1) +
+    geom_sf(data=st_union(allTracts.rings), fill=NA, color="red",size=2) +
+    labs(title="Station Stops: Half Mile Buffers",
+         subtitle = "Washington DC",
+         caption = "Data from US Census Bureau, Open Data DC") +
     mapTheme()
 ```
 
-#Distance to subway station
-```{r}
+#Summarizing Data
+```{r Summarize Data}
+
+```
+
+#Distance to subway station 依然有legend bug
+```{r Distance to stations}
 ggplot(allTracts.rings)+
   geom_sf(data = st_union(tracts19))+
   geom_sf(aes(fill=q5(distance)))+
