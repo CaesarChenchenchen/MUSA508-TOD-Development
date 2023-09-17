@@ -1,7 +1,7 @@
 ---
-title: "Transit Oriented Development in Washington DC"
-author: "Ling Chenr"
-date: "2023-09-16"
+title: "MUSA508_Ass2"
+author: "Caesar"
+date: "2023-09-10"
 output: html_document
 ---
 
@@ -22,19 +22,6 @@ options(tigris_class = "sf")
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 
 palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
-```
-
-```{r}
-newqBr <- function(df, variable, rnd) {
-  if (missing(rnd)) {
-    as.character(quantile(round(df[[variable]],4),
-                          c(.01,.2,.4,.6,.8), na.rm=T))
-  } else if (rnd == FALSE | rnd == F) {
-    as.character(formatC(quantile(df[[variable]],
-                                  c(.01,.2,.4,.6,.8), na.rm=T),
-                         digits = 3))
-  }
-}
 ```
 
 ## Load census data dictionaries
@@ -180,41 +167,7 @@ tracts09 <-
 allTracts <- rbind(tracts19,tracts09)
 ```
 
-```{r crimedata}
-crime19 <- st_read("https://maps2.dcgis.dc.gov/dcgis/rest/services/FEEDS/MPD/MapServer/1/query?outFields=*&where=1%3D1&f=geojson") %>%
-  dplyr::select(OFFENSE, CENSUS_TRACT, OBJECTID) %>%
-  st_transform('ESRI:102728')  
-
-crime09 <- st_read("https://maps2.dcgis.dc.gov/dcgis/rest/services/FEEDS/MPD/MapServer/33/query?outFields=*&where=1%3D1&f=geojson") %>%
-  dplyr::select(OFFENSE, CENSUS_TRACT, OBJECTID) %>%
-  st_transform('ESRI:102728') 
-  
-```
-```{r crime_data_09_19}
-crime_counts_by_tract_19 <- allTracts %>%
-  st_intersection(crime19) %>%
-  group_by(GEOID) %>%
-  summarise(crime_counts=n()) %>%
-  st_drop_geometry() %>%
-  mutate(year="2019")
-
-
-crime_counts_by_tract_09 <- allTracts %>%
-  st_intersection(crime09) %>%
-  group_by(GEOID) %>%
-  summarise(crime_counts=n()) %>%
-  st_drop_geometry() %>%
-  mutate(year="2009")
-
-```
-```{r add_crimedata}
-crime_counts_all <- rbind(crime_counts_by_tract_09, crime_counts_by_tract_19)
-
-allTracts <- left_join(allTracts, crime_counts_all, by=c("GEOID"="GEOID", "year"="year"))
-
-```
-
-```{r}
+```{r }
 dc_station <- st_read("https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/52/query?where=1%3D1&outFields=*&outSR=4326&f=json") %>%
   dplyr::select(NAME,LINE) %>%
   st_transform('ESRI:102728')  
@@ -228,14 +181,14 @@ dc_line <- st_read('https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Tr
 ggplot() +
   geom_sf(data = st_union(tracts19)) +
   geom_sf(data = dc_station,
-          show.legend = 'Point',size=1.5) +
+          aes(color = LINE),
+          show.legend = 'Point',size=2) +
   geom_sf(data = dc_line,
-          aes(color = NAME),
-          show.legend = 'Line',size=2)+
-  labs(title = 'Station Stops',
+          aes(color = GIS_ID),
+          show.legend = 'Line',size=1)
+  labs(title = 'Station stops',
        subtitle = 'Washington DC',
-       caption = 'Figure 2.2')+
-  scale_color_manual(values = c("blue","green","orange","red","#C0C0C0","yellow"),name="Metro Line")
+       caption = 'Figure 2.2')
 ```
 
 ```{r }
@@ -308,159 +261,30 @@ allTracts.group <-
       left_join(allTracts) %>%
       st_sf() %>%
       mutate(TOD = "Non-TOD")) %>%
-  mutate(MedRent.inf = ifelse(year == "2009", MedRent * 1.19, MedRent)) %>%
-  mutate(MedHHInc.inf = ifelse(year == "2009", MedHHInc *1.19, MedHHInc))
-```
-
-
-```{r}
-Tod_region <- allTracts.group %>%
-  select(TOD) %>%
-  filter(TOD =="TOD") %>%
-  st_union() %>%
-  st_sf()
-```
-
-### Trends across space and time
-```{r}
-ggplot(allTracts.group)+
-  geom_sf(data = st_union(tracts19))+
-  geom_sf(aes(fill = TOD))+
-  scale_fill_manual(values = c("grey", "yellow"))+
-  labs(title = "TOD and Non-TOD Census Tracts in Washington DC",
-       caption = "Data from US Census Bureau")+
-  facet_wrap(~year)+
-  mapTheme()
-  
+  mutate(MedRent.inf = ifelse(year == "2009", MedRent * 1.19, MedRent)) 
 ```
 
 ```{r}
-#Total Population within the TOD & Non-TOD tracts from 2009 to 2019
-ggplot(allTracts.group)+
-  geom_sf(data = st_union(tracts19))+
-  geom_sf(aes(fill=q5(TotalPop)))+
-  geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
-  scale_fill_manual(values = palette5,
-                    labels= qBr(allTracts.group, "TotalPop"),
-                    name = "Population\n(Quintile Breaks)")+
-    labs(title = "Total Population by census tracts, 2009-2019",
-         subtitle = "Washington DC",
-       caption = "Data from US Census Bureau")+
-  facet_wrap(~year)+
-  mapTheme()
+tod_part <- st_intersection(buffer,allTracts)%>%
+  mutate(TOD = 'TOD')%>%
+  dplyr::select(-Legend)
 
+non_tod_part <- allTracts %>%
+  filter(!(GEOID %in% tod_part$GEOID))%>%
+  mutate(TOD = 'Non_TOD')
 ```
 
 ```{r}
-#Median household income within the TOD & Non-TOD tracts from 2009 to 2019
-ggplot(allTracts.group)+
-  geom_sf(data = st_union(tracts19))+
-  geom_sf(aes(fill=q5(MedHHInc.inf)))+
-  geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
-  scale_fill_manual(values = palette5,
-                    labels= qBr(allTracts.group, "MedHHInc.inf"),
-                    name = "Median Household Income($)\n(Quintile Breaks)\n(Inflation adjusted to 2019)")+
-    labs(title = "Median Household Income by census tracts, 2009-2019",
-         subtitle = "Washington DC",
-       caption = "Data from US Census Bureau")+
-  facet_wrap(~year)+
-  mapTheme()
-
-```
-
-
-```{r}
-#Percentage of bachelors within the TOD & Non-TOD tracts from 2009 to 2019
-ggplot(allTracts.group)+
-  geom_sf(data = st_union(tracts19))+
-  geom_sf(aes(fill=q5(pctBachelors)))+
-  geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
-  scale_fill_manual(values = palette5,
-                    labels= newqBr(allTracts.group, "pctBachelors"),
-                    name = "Percentage of Bachelors\n(Quintile Breaks)")+
-    labs(title = "Percentage of Bachelors by census tracts, 2009-2019",
-         subtitle = "Washington DC",
-       caption = "Data from US Census Bureau")+
-  facet_wrap(~year)+
-  mapTheme()
-
-```
-```{r}
-#Median Rent within the TOD & Non-TOD tracts from 2009 to 2019
-ggplot(allTracts.group)+
-  geom_sf(data = st_union(tracts19))+
-  geom_sf(aes(fill=q5(MedRent.inf)))+
-  geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
-  scale_fill_manual(values = palette5,
-                    labels= newqBr(allTracts.group, "MedRent.inf"),
-                    name = "Median Rent($)\n(Quintile Breaks)\n(Inflation adjusted to 2019)")+
-    labs(title = "Median Rent by census tracts, 2009-2019",
-         subtitle = "Washington DC",
-       caption = "Data from US Census Bureau")+
-  facet_wrap(~year)+
-  mapTheme()
-
+allTracts.group2 <-
+  rbind(tod_part,non_tod_part) %>%
+  mutate(MedRent.inf = ifelse(year == "2009", MedRent * 1.19, MedRent)) 
 ```
 
 ```{r}
-#Crime counts within the TOD & Non-TOD tracts from 2009 to 2019
-ggplot(allTracts.group)+
-  geom_sf(data = st_union(tracts19))+
-  geom_sf(aes(fill=q5(crime_counts)))+
-  geom_sf(data = Tod_region, color = "#de660c",fill="transparent", size = 3)+
-  scale_fill_manual(values = palette5,
-                    labels= newqBr(allTracts.group, "crime_counts"),
-                    name = "Crime Counts\n(Quintile Breaks)")+
-    labs(title = "Crime Counts by census tracts, 2009-2019",
-         subtitle = "Washington DC",
-       caption = "Data from US Census Bureau")+
-  facet_wrap(~year)+
-  mapTheme()
-
+ggplot() +
+  geom_sf(data = non_tod_part,aes(fill = TotalPop))+
+  geom_sf(data = tod_part,aes(fill = TotalPop))
 ```
-
-### TOD Indicator Tables
-
-```{r}
-allTracts.Summary <- 
-  st_drop_geometry(allTracts.group) %>%
-  group_by(year, TOD) %>%
-  summarize(Rent = mean(MedRent, na.rm = T),
-            Population = mean(TotalPop, na.rm = T),
-            Percent_White = mean(pctWhite, na.rm = T),
-            Percent_Bach = mean(pctBachelors, na.rm = T),
-            Percent_Poverty = mean(pctPoverty, na.rm = T))
-
-allTracts.Summary %>%
-  unite(year.TOD, year, TOD, sep = ": ", remove = T) %>%
-  gather(Variable, Value, -year.TOD) %>%
-  mutate(Value = round(Value, 2)) %>%
-  spread(year.TOD, Value) %>%
-  kable() %>%
-  kable_styling() %>%
-  footnote(general_title = "\n",
-           general = "Table 2.2")
-```
-
-### TOD Indicator Plots
-
-Let's create small multiple plots We use the "gather" command (look this
-one up please) To go from wide to long Why do we do this?? Notice we can
-"pipe" a ggplot call right into this operation!
-
-```{r}
-allTracts.Summary %>%
-  gather(Variable, Value, -year, -TOD) %>%
-  ggplot(aes(year, Value, fill = TOD)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  facet_wrap(~Variable, scales = "free", ncol=5) +
-  scale_fill_manual(values = c("#bae4bc", "#0868ac"),
-                    name = "Type") +
-  labs(title = "Indicator differences across time and space") +
-  plotTheme() + theme(legend.position="bottom")
-```
-
-### TOD Indicator Plots
 
 ```{r}
 centroid_all <- st_centroid(allTracts.group, of_largest_polygon = TRUE)
@@ -469,13 +293,12 @@ centroid_all <- st_centroid(allTracts.group, of_largest_polygon = TRUE)
 ```{r }
 # population
 ggplot() +
-  geom_sf(data = allTracts.group,fill='grey60') + 
+  geom_sf(data = allTracts.group,fill='grey40') + 
   geom_sf(data = centroid_all%>%filter(TOD == 'TOD'),
           pch = 21,
           aes(size=TotalPop),
           fill=alpha('red',0.7),
           col = 'grey20') +
-  geom_sf(data = Tod_region, color = "white",fill="transparent", size = 1)+
   facet_wrap(~year) +
   scale_size(range = c(1,4))
 ```
@@ -483,18 +306,17 @@ ggplot() +
 ```{r}
 # rent
 ggplot() +
-  geom_sf(data = allTracts.group,fill='grey60') + 
+  geom_sf(data = allTracts.group,fill='grey40') + 
   geom_sf(data = centroid_all%>%filter(TOD == 'TOD'),
           pch = 21,
           aes(size=MedRent),
           fill=alpha('red',0.7),
           col = 'grey20') +
-  geom_sf(data = Tod_region, color = "white",fill="transparent", size = 1)+
   facet_wrap(~year) +
   scale_size(range = c(1,4))
 ```
 
-```{r create half mile buffers}
+```{r}
 station_ring <- multipleRingBuffer(st_union(dc_station), 2640*9, 2640)
 
 allTracts.rings <-
@@ -507,34 +329,26 @@ allTracts.rings <-
   mutate(distance = distance / 5280)
 ```
 
-```{r visualize half mile buffers}
+```{r}
 ggplot() +
-    geom_sf(data=station_ring,aes(color=distance)) +
-  scale_color_gradient()+
-    geom_sf(data=dc_station, size=1) +
-    geom_sf(data=st_union(allTracts.rings), fill=NA, color="red",size=2) +
-    labs(title="Station Stops: Half Mile Buffers",
-         subtitle = "Washington DC",
-         caption = "Data from US Census Bureau, Open Data DC") +
+    geom_sf(data=station_ring) +
+    geom_sf(data=station_ring, size=1) +
+    geom_sf(data=st_union(allTracts.rings), fill=NA, size=1.2) +
+    labs(title="Half mile buffers") +
     mapTheme()
 ```
 
-#Summarizing Data
-```{r Summarize Data}
-
+```{r}
+allTracts.rings[is.na(allTracts.rings)] <- 0
+summary <- allTracts.rings%>%
+  st_drop_geometry() %>%
+  group_by(year,distance)%>%
+  summarise(averagerent = mean(MedRent))
 ```
 
-#Distance to subway station 依然有legend bug
-```{r Distance to stations}
-ggplot(allTracts.rings)+
-  geom_sf(data = st_union(tracts19))+
-  geom_sf(aes(fill=q5(distance)))+
-  geom_sf(data = Tod_region, color= "#de660c",fill="transparent", size = 3)+
-  scale_fill_manual(values = palette5,
-                    labels= newqBr(allTracts.rings, "distance"),
-                    name = "Distance to Subway Stations")+
-    labs(title = "Distance to Subway Stations by census tracts",
-         subtitle = "Washington DC",
-       caption = "Data from US Census Bureau")+
-  mapTheme()
+```{r}
+ggplot(data=summary,aes(x=distance, y=averagerent, group=year, color=year)) +
+    geom_line() +
+    ggtitle("Average rent in differnt distance to station") +
+    ylab("Average rent")
 ```
